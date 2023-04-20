@@ -27,7 +27,18 @@ Project File Date:  04/17/2023
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 7 (build 960)', folder: 'C:\Keil_v5\ARM\ARMCC\Bin'
 Build target 'Target 1'
-".\Objects\tokenring_project.axf" - 0 Error(s), 0 Warning(s).
+compiling mac_sender.c...
+mac_sender.c(97): warning:  #223-D: function "createDataFrame" declared implicitly
+  				retCode = createDataFrame();
+mac_sender.c(55): warning:  #550-D: variable "qPtr"  was set but never used
+  	uint8_t * qPtr;
+mac_sender.c: 2 warnings, 0 errors
+linking...
+.\Objects\tokenring_project.axf: Error: L6218E: Undefined symbol createDataFrame (referred from mac_sender.o).
+Not enough information to list image symbols.
+Not enough information to list load addresses in the image map.
+Finished: 2 information, 0 warning and 1 error messages.
+".\Objects\tokenring_project.axf" - 1 Error(s), 2 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -458,7 +469,8 @@ Package Vendor: Keil
       Source file:   ugfx\config\with_os\gfxconf.h
       Include file:  ugfx\src\gwin\gwin_slider.h
       Include file:  ugfx\src\gwin\gwin_button.h
-Build Time Elapsed:  00:00:02
+Target not created.
+Build Time Elapsed:  00:00:05
 </pre>
 </body>
 </html>

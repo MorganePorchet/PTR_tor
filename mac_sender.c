@@ -5,8 +5,15 @@
 
 #include "main.h"
 
+
+osMessageQueueId_t queue_storing_id;
+
+const osMessageQueueAttr_t queue_storing_attr = {
+	.name = "MACS_STORING"
+};
+
 /*
-* 	Create the frame for the token
+ * 	Create the frame for the token
 */
 osStatus_t createTokenFrame(void){
 	struct queueMsg_t queueMsg;
@@ -42,11 +49,32 @@ osStatus_t createTokenFrame(void){
 	return retCode;
 }
 
+/*
+ *
+*/
+osStatus_t createDataFrame(void* msg)
+{
+	struct queueMsg_t queueMsg;
+	osStatus_t retCode;
+	struct macFrame frame;
+	
+	memcpy(msg, &queueMsg, sizeof(queueMsg));
+	frame.control.destAddr = queueMsg.addr;
+	// TODO: fill in the structs and put frame in phyS queue
+	
+	
+	return retCode;
+	
+}
+
 void MacSender(void *argument)
 {
 	struct queueMsg_t queueMsg;
 	uint8_t * qPtr;
 	osStatus_t retCode;
+	
+	// create the private message queue
+	queue_storing_id = osMessageQueueNew(3, sizeof(struct queueMsg_t), &queue_storing_attr);
 	
 	for (;;)
 	{
@@ -67,7 +95,8 @@ void MacSender(void *argument)
 				retCode = createTokenFrame();
 				break;
 			case TOKEN:
-				if (osMessageQueueGetCount(queue_macS_id) == 0)
+				// no messages in the queue
+				if (osMessageQueueGetCount(queue_storing_id) == 0)
 				{
 					// update the frame type
 					queueMsg.type = TO_PHY;
@@ -78,6 +107,26 @@ void MacSender(void *argument)
 						osPriorityNormal, 
 						osWaitForever); 
 				}
+				else
+				{
+					// send fist message in the private queue
+					retCode = createDataFrame(&queueMsg);
+				}
+				break;
+			case DATA_IND:
+				
+				if (osMessageQueueGetCount(queue_storing_id) != osMessageQueueGetCapacity(queue_storing_id))
+				{
+					// storing msg in the private queue
+					retCode = osMessageQueuePut(
+							queue_storing_id,
+							&queueMsg,
+							osPriorityNormal,
+							osWaitForever
+					); 
+					CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+				}
+				
 				break;
 		}
 		

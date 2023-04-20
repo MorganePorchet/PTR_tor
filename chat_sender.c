@@ -24,16 +24,19 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	 
 	if(GPIO_Pin == GPIO_PIN_8)
 	{
-		queueMsg.addr = ext_kbChar;
-		//----------------------------------------------------------------------------
-		// QUEUE SEND								
-		//----------------------------------------------------------------------------
-		retCode = osMessageQueuePut(
-			queue_keyboard_id,
-			&queueMsg,
-			osPriorityNormal,
-			0);
-		CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);			 
+		if(ext_kbChar !=)
+		{
+			queueMsg.addr = ext_kbChar;
+			//----------------------------------------------------------------------------
+			// QUEUE SEND								
+			//----------------------------------------------------------------------------
+			retCode = osMessageQueuePut(
+				queue_keyboard_id,
+				&queueMsg,
+				osPriorityNormal,
+				0);
+			CheckRetCode(retCode,__LINE__,__FILE__,CONTINUE);	
+		}
 	}
 }
 //////////////////////////////////////////////////////////////////////////////////
