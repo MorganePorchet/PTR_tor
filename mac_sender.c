@@ -66,6 +66,19 @@ void MacSender(void *argument)
 			case NEW_TOKEN:
 				retCode = createTokenFrame();
 				break;
+			case TOKEN:
+				if (osMessageQueueGetCount(queue_macS_id) == 0)
+				{
+					// update the frame type
+					queueMsg.type = TO_PHY;
+					
+					retCode = osMessageQueuePut(
+						queue_phyS_id,
+						&queueMsg,
+						osPriorityNormal, 
+						osWaitForever); 
+				}
+				break;
 		}
 		
 		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
