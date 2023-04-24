@@ -121,12 +121,18 @@ struct queueMsg_t
 // bit field for control
 struct mac_control
 {
-	uint8_t destSAPI : 3;
+	uint8_t destSAPI : 3;		// LSB
 	uint8_t destAddr : 4;
 	uint8_t nothing1 : 1;
 	uint8_t srcSAPI : 3;
 	uint8_t srcAddr : 4;
-	uint8_t nothing2 : 1;
+	uint8_t nothing2 : 1;		// MSB
+};
+
+struct mac_control_byte
+{
+	uint8_t dest;
+	uint8_t source;
 };
 
 // bit field for status
@@ -137,16 +143,15 @@ struct mac_status
 	uint8_t checksum : 6;		// MSB
 };
 
-struct macFrame
+union mac_status_union
 {
-	struct mac_control control;
-	uint8_t length;
-	uint32_t * dataPtr;
 	struct mac_status status;
+	uint8_t raw;
 };
 
-union macFrameUnion
+union mac_control_union
 {
-	struct macFrame macFrame;
-	uint64_t raw;
+	struct mac_control controlBf;
+	struct mac_control_byte controlBytes;
+
 };
