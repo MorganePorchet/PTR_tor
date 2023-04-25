@@ -8,6 +8,8 @@
 
 osMessageQueueId_t queue_storing_id;
 uint8_t * storedFrame;
+uint8_t counterDataBack;
+struct queueMsg_t * storedToken;
 
 const osMessageQueueAttr_t queue_storing_attr = {
 	.name = "MACS_STORING"
@@ -57,6 +59,7 @@ osStatus_t createTokenFrame(void){
 osStatus_t createDataFrame()
 {
 	struct queueMsg_t queueMsg;
+	struct queueMsg_t msgToSend;
 	osStatus_t retCode;
 	union mac_control_union controlUnion;
 	union mac_status_union statusUnion;
@@ -108,16 +111,84 @@ osStatus_t createDataFrame()
 	memcpy(&frame[3], qPtr, length);
 	frame[3+length] = statusUnion.raw;
 	
-	// send copy of the frame to PHY_SENDER
-	storedFrame = osMemoryPoolAlloc(memPool, osWaitForever)
-	memcpy(storedFrame, frame, sizeof(frame)); 
+	//-------------------------------------------
+	// TODO : ack read when broadcast
+	//-------------------------------------------
+	
+	// make copy of the frame
+	storedFrame = osMemoryPoolAlloc(memPool, osWaitForever);
+	memcpy(storedFrame, frame, length+4); 
+	
+	// fills the message to send
+	msgToSend.type = TO_PHY;
+	msgToSend.anyPtr = frame;
+	
+	// send frame to PHY_SENDER
 	retCode = osMessageQueuePut(
 		queue_phyS_id,
-		frame,
+		&msgToSend,
+		osPriorityNormal,
+		osWaitForever);
+		
+	counterDataBack = 0;
+		
+	return retCode;
+}
+
+osStatus_t manageDataBack(){
+	struct queueMsg_t queueMsg;
+	struct queueMsg_t msgToSend;
+	union mac_status_union statusUnion;
+	osStatus_t retCode;
+	uint8_t length;
+	uint8_t * qPtr;
+	
+	// GET the message from private queue
+	retCode = osMessageQueueGet(
+		queue_macS_id,
+		&queueMsg,
+		NULL,
+		osWaitForever);
+	
+	CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+	
+	qPtr = queueMsg.anyPtr;
+	
+	length = qPtr[3];
+	statusUnion.raw = qPtr[3+length];
+	
+	if(statusUnion.status.ack = 0 && counterDataBack == 0){
+		counterDataBack++;
+		
+		// fills the message to send
+		msgToSend.type = TO_PHY;
+		msgToSend.anyPtr = storedFrame;
+
+		// send frame to PHY_SENDER
+		retCode = osMessageQueuePut(
+			queue_phyS_id,
+			&msgToSend,
+			osPriorityNormal,
+			osWaitForever);
+		
+		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+	}
+	
+	// free the stored data
+	retCode = osMemoryPoolFree(memPool, storedFrame);
+	CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+	
+	// send the token
+	retCode = osMessageQueuePut(
+		queue_phyS_id,
+		storedToken,
 		osPriorityNormal,
 		osWaitForever);
 	
 	CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+	
+	// free the memory for the token
+	retCode = osMemoryPoolFree(memPool, storedToken);
 	
 	return retCode;
 }
@@ -129,7 +200,7 @@ void MacSender(void *argument)
 	
 	// create the private message queue
 	queue_storing_id = osMessageQueueNew(3, sizeof(struct queueMsg_t), &queue_storing_attr);
-
+	
 	for (;;)
 	{
 		// read QUEUE
@@ -147,7 +218,6 @@ void MacSender(void *argument)
 				retCode = createTokenFrame();
 				break;
 			case TOKEN:
-				// TODO: store thoken in var
 				// no messages in the queue
 				if (osMessageQueueGetCount(queue_storing_id) == 0)
 				{
@@ -162,6 +232,12 @@ void MacSender(void *argument)
 				}
 				else
 				{
+					// memory allocation for the token
+					storedToken = osMemoryPoolAlloc(memPool, osWaitForever);
+					
+					// store the token frame header
+					memcpy(storedToken, &queueMsg, sizeof(queueMsg));
+					
 					// send fist message in the private queue
 					retCode = createDataFrame();
 				}
@@ -178,9 +254,11 @@ void MacSender(void *argument)
 							osPriorityNormal,
 							osWaitForever
 					); 
-					CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 				}
+				break;
 				
+			case DATABACK:
+				retCode = manageDataBack();
 				break;
 		}
 		
