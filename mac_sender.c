@@ -56,7 +56,7 @@ osStatus_t createTokenFrame(void){
 /*
  *
 */
-osStatus_t createDataFrame()
+osStatus_t createDataFrame(void)
 {
 	struct queueMsg_t queueMsg;
 	struct queueMsg_t msgToSend;
@@ -89,19 +89,17 @@ osStatus_t createDataFrame()
 	length = strlen(qPtr);
 	
 	// status
-	statusUnion.status.ack = 0;
-	statusUnion.status.read = 0;
-	
-	// checksum calculation
-	uint8_t checksum = 0;
-	for (uint8_t i = 0; i < strlen(qPtr); i++)
+	if (controlUnion.controlBf.destAddr == BROADCAST_ADDRESS)
 	{
-		checksum = checksum + qPtr[i];
+		// broadcast
+		statusUnion.status.ack = 1;
+		statusUnion.status.read = 1;
+	} 
+	else 
+	{
+		statusUnion.status.ack = 0;
+		statusUnion.status.read = 0;
 	}
-	checksum = checksum%3;
-	
-	// checksum storing
-	statusUnion.status.checksum = checksum;
 	
 	// memory allocation
 	frame = osMemoryPoolAlloc(memPool, osWaitForever);
@@ -109,11 +107,11 @@ osStatus_t createDataFrame()
 	frame[1] = controlUnion.controlBytes.dest;
 	frame[2] = length;
 	memcpy(&frame[3], qPtr, length);
-	frame[3+length] = statusUnion.raw;
+
+	// checksum calculation and storing
+	statusUnion.status.checksum = Checksum(frame);
 	
-	//-------------------------------------------
-	// TODO : ack read when broadcast
-	//-------------------------------------------
+	frame[3+length] = statusUnion.raw;
 	
 	// make copy of the frame
 	storedFrame = osMemoryPoolAlloc(memPool, osWaitForever);
@@ -130,34 +128,32 @@ osStatus_t createDataFrame()
 		osPriorityNormal,
 		osWaitForever);
 		
+	CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);	
+	
 	counterDataBack = 0;
-		
+	
+	// release memory allocated by CHAT_SENDER
+	retCode = osMemoryPoolFree(memPool, queueMsg.anyPtr);
+	
 	return retCode;
 }
 
-osStatus_t manageDataBack(){
-	struct queueMsg_t queueMsg;
+osStatus_t manageDataBack(void * dataFramePointer){
 	struct queueMsg_t msgToSend;
 	union mac_status_union statusUnion;
 	osStatus_t retCode;
 	uint8_t length;
 	uint8_t * qPtr;
 	
-	// GET the message from private queue
-	retCode = osMessageQueueGet(
-		queue_macS_id,
-		&queueMsg,
-		NULL,
-		osWaitForever);
+	qPtr = dataFramePointer;
 	
-	CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
-	
-	qPtr = queueMsg.anyPtr;
-	
-	length = qPtr[3];
+	length = qPtr[2];
 	statusUnion.raw = qPtr[3+length];
 	
-	if(statusUnion.status.ack = 0 && counterDataBack == 0){
+	// TODO: read = 0 -> error to LCD
+	
+	// resend message to PHY_SENDER
+	if(statusUnion.status.ack == 0 && counterDataBack == 0){
 		counterDataBack++;
 		
 		// fills the message to send
@@ -172,24 +168,31 @@ osStatus_t manageDataBack(){
 			osWaitForever);
 		
 		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+		
+		storedFrame = NULL;
+		
+		// free the stored data
+//		retCode = osMemoryPoolFree(memPool, storedFrame);
+//		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+	}
+	else if (statusUnion.status.ack == 0 && counterDataBack == 1)
+	{
+		counterDataBack = 0;
+		
+		// send the token
+		retCode = osMessageQueuePut(
+			queue_phyS_id,
+			storedToken,
+			osPriorityNormal,
+			osWaitForever);
+		
+		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+		
+		storedToken->anyPtr = NULL;
 	}
 	
-	// free the stored data
-	retCode = osMemoryPoolFree(memPool, storedFrame);
-	CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
-	
-	// send the token
-	retCode = osMessageQueuePut(
-		queue_phyS_id,
-		storedToken,
-		osPriorityNormal,
-		osWaitForever);
-	
-	CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
-	
-	// free the memory for the token
-	retCode = osMemoryPoolFree(memPool, storedToken);
-	
+	// free the memory allocated by PHY_RECEIVER
+	retCode = osMemoryPoolFree(memPool, dataFramePointer);
 	return retCode;
 }
 
@@ -258,13 +261,11 @@ void MacSender(void *argument)
 				break;
 				
 			case DATABACK:
-				retCode = manageDataBack();
+				retCode = manageDataBack(queueMsg.anyPtr);
 				break;
 		}
 		
 		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 		
-		
-		// TODO : memory release
 	}
 }

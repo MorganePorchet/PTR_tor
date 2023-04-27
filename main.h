@@ -53,6 +53,7 @@ extern osEventFlagsId_t  	eventFlag_id;
 //--------------------------------------------------------------------------------
 // functions used in more than one file
 //--------------------------------------------------------------------------------
+uint8_t Checksum(uint8_t * frame);
 void CheckRetCode(uint32_t retCode,uint32_t lineNumber,char * fileName,uint8_t mode);
 void DebugFrame(char * stringP);
 void DebugMacFrame(uint8_t preChar,uint8_t * stringP);
@@ -153,5 +154,6 @@ union mac_control_union
 {
 	struct mac_control controlBf;
 	struct mac_control_byte controlBytes;
+	uint16_t raw;
 
 };
