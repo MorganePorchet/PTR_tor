@@ -170,10 +170,6 @@ osStatus_t manageDataBack(void * dataFramePointer){
 		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 		
 		storedFrame = NULL;
-		
-		// free the stored data
-//		retCode = osMemoryPoolFree(memPool, storedFrame);
-//		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 	}
 	else if (statusUnion.status.ack == 0 && counterDataBack == 1)
 	{
@@ -221,6 +217,8 @@ void MacSender(void *argument)
 				retCode = createTokenFrame();
 				break;
 			case TOKEN:
+				// TODO : update TOKEN_LIST on the LCD
+			
 				// no messages in the queue
 				if (osMessageQueueGetCount(queue_storing_id) == 0)
 				{

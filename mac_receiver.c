@@ -69,7 +69,59 @@ osStatus_t send_DATABACK_frame(void * dataFramePointer)
 
 osStatus_t send_DATA_IND_frame(void * dataFramePointer)
 {
+	struct queueMsg_t queueMsg;
+	union mac_control_union controlUnion;
 	osStatus_t retCode;
+	uint8_t length;
+	uint8_t * qPtr;
+	char * strPtr;
+	
+	// memory alloc for string
+	strPtr = osMemoryPoolAlloc(memPool, osWaitForever);
+	
+	qPtr = dataFramePointer;
+	
+	// get length, source byte and string
+	length = qPtr[2];
+	controlUnion.controlBytes.source = qPtr[0];
+	
+	// TODO: memcpy qPtr in strPtr
+	//	-> for loop from 3+length to the end of the string
+	
+	
+	// add \0
+	strPtr[length+2] = '\0';
+	
+	queueMsg.type = DATA_IND;
+	queueMsg.addr = controlUnion.controlBf.srcAddr;
+	queueMsg.sapi = controlUnion.controlBf.srcSAPI;
+	queueMsg.anyPtr = strPtr;
+	
+	switch (controlUnion.controlBf.srcSAPI)
+	{	
+		case CHAT_SAPI:
+			if (gTokenInterface.connected)
+			{
+				retCode = osMessageQueuePut(
+					queue_chatR_id,
+					&queueMsg,
+					osPriorityNormal,
+					osWaitForever);
+			}
+			break;
+			
+		case TIME_SAPI:
+			if (gTokenInterface.broadcastTime)
+			{
+				retCode = osMessageQueuePut(
+					queue_timeR_id,
+					&queueMsg,
+					osPriorityNormal,
+					osWaitForever);				
+			}
+			break;
+	}	
+	
 	
 	return retCode;
 }
@@ -148,8 +200,8 @@ void MacReceiver(void *argument)
 							if (controlUnion.controlBf.srcAddr == MYADDRESS)
 							{
 								// DATA_IND
-//								retCode = send_DATA_IND_frame(queueMsg.anyPtr);
-//								CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+								retCode = send_DATA_IND_frame(queueMsg.anyPtr);
+								CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 								
 								// DATABACK
 								retCode = send_DATABACK_frame(queueMsg.anyPtr);
@@ -189,118 +241,6 @@ void MacReceiver(void *argument)
 						retCode = send_TO_PHY_frame(queueMsg.anyPtr);
 					}
 				}
-				
-				
-				
-				/*
-				// Source Address = MYADDRESS
-				if (controlUnion.controlBf.srcAddr == MYADDRESS)
-				{
-					// Dest Address = MYADDRESS -> have sent message to myself
-					if (controlUnion.controlBf.destAddr == MYADDRESS)
-					{
-						length = qPtr[3];
-						statusUnion.raw = qPtr[3+length];
-						
-						// checksum
-						checksum = Checksum(qPtr);
-						
-						// update the READ and ACK bit depending on the checksum
-						if (checksum == statusUnion.status.checksum)
-						{
-							statusUnion.status.read = 1;
-							statusUnion.status.ack = 1;
-							
-							// DATA_IND -> TODO
-						}
-						else
-						{
-							statusUnion.status.read = 1;
-							statusUnion.status.ack = 0;							
-						}
-						
-						// send frame to PHY_SENDER
-						// change type
-						queueMsg.type = TO_PHY;
-						// update status
-						qPtr[3+length] = statusUnion.raw;
-						
-						// resend frame to PHY_SENDER
-						retCode = osMessageQueuePut(
-							queue_phyS_id,
-							&queueMsg,
-							osPriorityNormal,
-							osWaitForever);
-					}
-					else 
-					{
-						// send frame to MAC_SENDER
-						// change type
-						queueMsg.type = DATABACK;
-
-						// resend frame to PHY_SENDER
-						retCode = osMessageQueuePut(
-							queue_macS_id,
-							&queueMsg,
-							osPriorityNormal,
-							osWaitForever);
-					}
-				}
-				// it's not the message I sent
-				else
-				{
-					// the frame is for me
-					if (controlUnion.controlBf.destAddr == MYADDRESS)
-					{
-						length = qPtr[3];
-						statusUnion.raw = qPtr[3+length];
-						
-						// checksum
-						checksum = Checksum(qPtr);
-						
-						// update the READ and ACK bit depending on the checksum
-						if (checksum == statusUnion.status.checksum)
-						{
-							statusUnion.status.read = 1;
-							statusUnion.status.ack = 1;
-							
-							// DATA_IND -> TODO
-						}
-						else
-						{
-							statusUnion.status.read = 1;
-							statusUnion.status.ack = 0;							
-						}
-						
-						// send frame to PHY_SENDER
-						// change type
-						queueMsg.type = TO_PHY;
-						// update status
-						qPtr[3+length] = statusUnion.raw;
-						
-						// resend frame to PHY_SENDER
-						retCode = osMessageQueuePut(
-							queue_phyS_id,
-							&queueMsg,
-							osPriorityNormal,
-							osWaitForever);
-					}
-					// the message is not for me
-					else 
-					{
-						// send frame to PHY_SENDER
-						// change type
-						queueMsg.type = TO_PHY;
-
-						// resend frame to PHY_SENDER
-						retCode = osMessageQueuePut(
-							queue_phyS_id,
-							&queueMsg,
-							osPriorityNormal,
-							osWaitForever);
-					}
-				}
-				*/
 			}
 		}
 	}
