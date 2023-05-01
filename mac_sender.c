@@ -171,7 +171,8 @@ osStatus_t manageDataBack(void * dataFramePointer){
 		
 		storedFrame = NULL;
 	}
-	else if (statusUnion.status.ack == 0 && counterDataBack == 1)
+	//else if (statusUnion.status.ack == 0 && counterDataBack == 1)
+	else 
 	{
 		counterDataBack = 0;
 		

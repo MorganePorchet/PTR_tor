@@ -289,12 +289,12 @@ void CheckRetCode(uint32_t retCode,uint32_t lineNumber,char * fileName,uint8_t m
 uint8_t Checksum(uint8_t * frame)
 {
 	uint8_t checksum = 0;
-	uint8_t length;
+	uint8_t length = 0;
 	
 	// get length of data
 	length = frame[2];
 	
-	for (uint8_t i = 0; i < length+2; i++)
+	for (uint8_t i = 0; i < length+3; i++)
 	{
 		checksum = checksum + frame[i];
 	}

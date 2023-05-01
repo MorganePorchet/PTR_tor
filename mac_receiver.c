@@ -78,52 +78,56 @@ osStatus_t send_DATA_IND_frame(void * dataFramePointer)
 	
 	// memory alloc for string
 	strPtr = osMemoryPoolAlloc(memPool, osWaitForever);
+	if (strPtr != NULL)
+	{
+		qPtr = dataFramePointer;
+		
+		// get length, source byte and string
+		length = qPtr[2];
+		controlUnion.controlBytes.source = qPtr[0];
+		
+		// for loop from 3 to the end of the string [3+length]
+		for(uint8_t i = 0; i < length; i++){
+			strPtr[i] = (char) qPtr[3+i];
+		}
 	
-	qPtr = dataFramePointer;
-	
-	// get length, source byte and string
-	length = qPtr[2];
-	controlUnion.controlBytes.source = qPtr[0];
-	
-	// TODO: memcpy qPtr in strPtr
-	//	-> for loop from 3+length to the end of the string
-	
-	
-	// add \0
-	strPtr[length+2] = '\0';
-	
-	queueMsg.type = DATA_IND;
-	queueMsg.addr = controlUnion.controlBf.srcAddr;
-	queueMsg.sapi = controlUnion.controlBf.srcSAPI;
-	queueMsg.anyPtr = strPtr;
-	
-	switch (controlUnion.controlBf.srcSAPI)
-	{	
-		case CHAT_SAPI:
-			if (gTokenInterface.connected)
-			{
-				retCode = osMessageQueuePut(
-					queue_chatR_id,
-					&queueMsg,
-					osPriorityNormal,
-					osWaitForever);
-			}
-			break;
-			
-		case TIME_SAPI:
-			if (gTokenInterface.broadcastTime)
-			{
-				retCode = osMessageQueuePut(
-					queue_timeR_id,
-					&queueMsg,
-					osPriorityNormal,
-					osWaitForever);				
-			}
-			break;
-	}	
-	
-	
-	return retCode;
+		strPtr[length] = '\0';  // update it to the right position
+		
+		queueMsg.type = DATA_IND;
+		queueMsg.addr = controlUnion.controlBf.srcAddr;
+		queueMsg.sapi = controlUnion.controlBf.srcSAPI;
+		queueMsg.anyPtr = strPtr;
+		
+		switch (controlUnion.controlBf.srcSAPI)
+		{	
+			case CHAT_SAPI:
+				if (gTokenInterface.connected)
+				{
+					retCode = osMessageQueuePut(
+						queue_chatR_id,
+						&queueMsg,
+						osPriorityNormal,
+						osWaitForever);
+				}
+				break;
+				
+			case TIME_SAPI:
+				if (gTokenInterface.broadcastTime)
+				{
+					retCode = osMessageQueuePut(
+						queue_timeR_id,
+						&queueMsg,
+						osPriorityNormal,
+						osWaitForever);				
+				}
+				break;
+		}	
+		return retCode;
+	}
+	else
+	{
+		return NULL;
+	}
 }
 void MacReceiver(void *argument)
 {
@@ -173,6 +177,7 @@ void MacReceiver(void *argument)
 					
 					// CHECKSUM
 					checksum = Checksum(qPtr);
+					checksum = checksum & 0x3F;		// put the checksum on 6 bits !!! AND 0b00111111
 					
 					// update the READ and ACK bit depending on the checksum and sapi
 					if (checksum == statusUnion.status.checksum)
@@ -194,15 +199,18 @@ void MacReceiver(void *argument)
 							sapiState = false;
 						}
 						
+						// update the R and A bits in the frame pointer
+						qPtr[3+length] = statusUnion.raw;
+						
 						if (sapiState)
 						{
+							// DATA_IND
+							retCode = send_DATA_IND_frame(queueMsg.anyPtr);
+							CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+							
 							// SOURCE ADDRESS CHECK
 							if (controlUnion.controlBf.srcAddr == MYADDRESS)
-							{
-								// DATA_IND
-								retCode = send_DATA_IND_frame(queueMsg.anyPtr);
-								CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
-								
+							{								
 								// DATABACK
 								retCode = send_DATABACK_frame(queueMsg.anyPtr);
 							}
@@ -222,6 +230,9 @@ void MacReceiver(void *argument)
 					{
 						statusUnion.status.ack = 0;
 						statusUnion.status.read = 0;
+						
+						// update the R and A bits in the frame pointer
+						qPtr[3+length] = statusUnion.raw;
 						
 						// DATABACK	
 						retCode = send_DATABACK_frame(queueMsg.anyPtr);
