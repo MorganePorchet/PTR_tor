@@ -170,7 +170,7 @@ void MacReceiver(void *argument)
 				controlUnion.controlBytes.source = qPtr[0];
 				
 				// DESTINATION ADDRESS CHECK
-				if (controlUnion.controlBf.destAddr == MYADDRESS)
+				if (controlUnion.controlBf.destAddr == MYADDRESS || controlUnion.controlBf.destAddr == BROADCAST_ADDRESS)
 				{
 					length = qPtr[2];
 					statusUnion.raw = qPtr[3+length];

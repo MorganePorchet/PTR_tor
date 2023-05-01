@@ -27,12 +27,15 @@ osStatus_t createTokenFrame(void){
 	// fill the message to send
 	uint8_t msgToSend[TOKENSIZE-2];		// TOKENSIZE(in PHY layer) - 2 to have the size in MAC layer
 	msgToSend[0] = TOKEN_TAG;
+	
 	// State st_i fields
 	for (uint8_t i = 1; i < sizeof(msgToSend); i++)
 	{
 		msgToSend[i] = 0; 
 	}
-	msgToSend[MYADDRESS] =  0xA;		// TODO: replace the harcoded chat application bit
+	
+	msgToSend[MYADDRESS+1] =  0xA;		// this is the default state when a token is created
+																		// chat = 1, time = 1
 	
 	// memory allocation
 	msg = osMemoryPoolAlloc(memPool, osWaitForever);
@@ -111,6 +114,7 @@ osStatus_t createDataFrame(void)
 	// checksum calculation and storing
 	statusUnion.status.checksum = Checksum(frame);
 	
+	// update the status bits
 	frame[3+length] = statusUnion.raw;
 	
 	// make copy of the frame
@@ -171,7 +175,6 @@ osStatus_t manageDataBack(void * dataFramePointer){
 		
 		storedFrame = NULL;
 	}
-	//else if (statusUnion.status.ack == 0 && counterDataBack == 1)
 	else 
 	{
 		counterDataBack = 0;
@@ -193,6 +196,41 @@ osStatus_t manageDataBack(void * dataFramePointer){
 	return retCode;
 }
 
+osStatus_t send_TOKEN_LIST() 
+{
+	struct queueMsg_t msgToSend;
+	osStatus_t retCode;
+	uint8_t * qPtr;
+	
+	qPtr = storedToken->anyPtr;
+	
+	// update our state
+	if(gTokenInterface.connected)
+	{
+		qPtr[MYADDRESS+1] = 0xA;
+	}
+	else
+	{
+		qPtr[MYADDRESS+1] = 0x4;		
+	}
+
+	// update the station list
+	for(uint8_t i = 1; i < TOKENSIZE-2; i++)		// TOKENSIZE(in PHY layer) - 2 to have the size in MAC layer
+	{
+		gTokenInterface.station_list[i-1] = qPtr[i];
+	}
+	
+	// send TOKEN_LIST frame
+	msgToSend.type = TOKEN_LIST;
+	
+	retCode = osMessageQueuePut(
+			queue_lcd_id,
+			&msgToSend,
+			osPriorityNormal,
+			osWaitForever);
+		
+		return retCode;
+}
 void MacSender(void *argument)
 {
 	struct queueMsg_t queueMsg;
@@ -200,6 +238,9 @@ void MacSender(void *argument)
 	
 	// create the private message queue
 	queue_storing_id = osMessageQueueNew(3, sizeof(struct queueMsg_t), &queue_storing_attr);
+	
+	// memory allocation for the token
+	storedToken = osMemoryPoolAlloc(memPool, osWaitForever);
 	
 	for (;;)
 	{
@@ -217,8 +258,13 @@ void MacSender(void *argument)
 			case NEW_TOKEN:
 				retCode = createTokenFrame();
 				break;
-			case TOKEN:
-				// TODO : update TOKEN_LIST on the LCD
+			case TOKEN:					
+				// store the token frame header
+				memcpy(storedToken, &queueMsg, sizeof(queueMsg));
+			
+				// update TOKEN_LIST on the LCD
+				retCode = send_TOKEN_LIST();
+				CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 			
 				// no messages in the queue
 				if (osMessageQueueGetCount(queue_storing_id) == 0)
@@ -234,12 +280,6 @@ void MacSender(void *argument)
 				}
 				else
 				{
-					// memory allocation for the token
-					storedToken = osMemoryPoolAlloc(memPool, osWaitForever);
-					
-					// store the token frame header
-					memcpy(storedToken, &queueMsg, sizeof(queueMsg));
-					
 					// send fist message in the private queue
 					retCode = createDataFrame();
 				}
@@ -262,6 +302,18 @@ void MacSender(void *argument)
 			case DATABACK:
 				retCode = manageDataBack(queueMsg.anyPtr);
 				break;
+			
+			case START:
+				gTokenInterface.connected = true;
+				// update TOKEN and send TOKEN_LIST
+				retCode = send_TOKEN_LIST();
+				break;
+			
+			case STOP:
+				gTokenInterface.connected = false;
+				// update TOKEN and send TOKEN_LIST
+				retCode = send_TOKEN_LIST();
+				break;			
 		}
 		
 		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
