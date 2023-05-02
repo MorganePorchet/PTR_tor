@@ -112,14 +112,11 @@ osStatus_t send_DATA_IND_frame(void * dataFramePointer)
 				break;
 				
 			case TIME_SAPI:
-				if (gTokenInterface.broadcastTime)
-				{
 					retCode = osMessageQueuePut(
 						queue_timeR_id,
 						&queueMsg,
 						osPriorityNormal,
 						osWaitForever);				
-				}
 				break;
 		}	
 		return retCode;
@@ -222,8 +219,17 @@ void MacReceiver(void *argument)
 						}
 						else
 						{
-							// DATABACK
-							retCode = send_DATABACK_frame(queueMsg.anyPtr);
+							// SOURCE ADDRESS CHECK
+							if (controlUnion.controlBf.srcAddr == MYADDRESS)
+							{								
+								// DATABACK
+								retCode = send_DATABACK_frame(queueMsg.anyPtr);
+							}
+							else
+							{
+								// TO_PHY
+								retCode = send_TO_PHY_frame(queueMsg.anyPtr);
+							}
 						}
 					}
 					else
