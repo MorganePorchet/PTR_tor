@@ -146,55 +146,28 @@ osStatus_t send_MAC_ERROR(){
 	struct queueMsg_t queueMsg;
 	union mac_control_union controlUnion;
 	osStatus_t retCode;
-	uint8_t length;
-	uint8_t * qPtr;
 	char * strPtr;
 	
 	// memory alloc for string
-	strPtr = osMemoryPoolAlloc(memPool, osWaitForever);
-	if (strPtr != NULL)
-	{
-		qPtr = storedFrame;
-		
-		// get length, source byte and string
-		length = qPtr[2];
-		controlUnion.controlBytes.source = qPtr[0];
-		
-		// for loop from 3 to the end of the string [3+length]
-		for(uint8_t i = 0; i < length; i++){
-			strPtr[i] = (char) qPtr[3+i];
-		}
+	strPtr = osMemoryPoolAlloc(memPool, osWaitForever);		// don't need to do NULL check because of the osWaitForever
+
+	strPtr = "Dest. station couldn't read message\0";
 	
-		strPtr[length] = '\0';  // update it to the right position
-		
-		// fill the msg to send
-		queueMsg.type = MAC_ERROR;
-		queueMsg.addr = controlUnion.controlBf.srcAddr;
-		queueMsg.anyPtr = strPtr;
-		
-		// put frame in the lcd queue
-		retCode = osMessageQueuePut(
-			queue_lcd_id,
-			&queueMsg,
-			osPriorityNormal,
-			osWaitForever);
+	// fill the msg to send
+	queueMsg.type = MAC_ERROR;
+	queueMsg.addr = controlUnion.controlBf.srcAddr;
+	queueMsg.anyPtr = strPtr;
+	
+	// put frame in the lcd queue
+	retCode = osMessageQueuePut(
+		queue_lcd_id,
+		&queueMsg,
+		osPriorityNormal,
+		osWaitForever);
 
-		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+	CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 
-		// free the memory for storedFrame
-		retCode = osMemoryPoolFree(memPool, storedFrame);
-		
-		return retCode;
-	}
-	else 
-	{
-		// free the memory for storedFrame
-		retCode = osMemoryPoolFree(memPool, storedFrame);
-
-		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
-		
-		return NULL;
-	}
+	return retCode;
 }
 
 osStatus_t manageDataBack(void * dataFramePointer){
@@ -202,6 +175,7 @@ osStatus_t manageDataBack(void * dataFramePointer){
 	union mac_status_union statusUnion;
 	osStatus_t retCode;
 	uint8_t length;
+	uint8_t lengthStoredFrame;
 	uint8_t * qPtr;
 	uint8_t * msg;
 	
@@ -222,7 +196,10 @@ osStatus_t manageDataBack(void * dataFramePointer){
 			// fills the message to send
 			msgToSend.type = TO_PHY;
 			msgToSend.anyPtr = msg;	
-			memcpy(msg, storedFrame, sizeof(storedFrame));
+			
+			// length of stored frame
+			lengthStoredFrame = 3+storedFrame[3]+1;
+			memcpy(msg, storedFrame, lengthStoredFrame);
 
 			// send frame to PHY_SENDER
 			retCode = osMessageQueuePut(
@@ -247,7 +224,6 @@ osStatus_t manageDataBack(void * dataFramePointer){
 			
 			CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 			
-			
 			storedToken->anyPtr = NULL;
 			// free the memory for storedFrame
 			retCode = osMemoryPoolFree(memPool, storedFrame);
@@ -261,6 +237,17 @@ osStatus_t manageDataBack(void * dataFramePointer){
 	else
 	{
 		retCode = send_MAC_ERROR();
+		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+		
+		// send the token
+		retCode = osMessageQueuePut(
+			queue_phyS_id,
+			storedToken,
+			osPriorityNormal,
+			osWaitForever);
+		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
+		
+		storedToken->anyPtr = NULL;
 	}
 	return retCode;
 }
