@@ -151,7 +151,7 @@ osStatus_t send_MAC_ERROR(){
 	// memory alloc for string
 	strPtr = osMemoryPoolAlloc(memPool, osWaitForever);		// don't need to do NULL check because of the osWaitForever
 
-	strPtr = "Dest. station couldn't read message\0";
+	sprintf(strPtr, "Dest. station couldn't read message\0");
 	
 	// fill the msg to send
 	queueMsg.type = MAC_ERROR;
@@ -225,14 +225,11 @@ osStatus_t manageDataBack(void * dataFramePointer){
 			CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 			
 			storedToken->anyPtr = NULL;
+
 			// free the memory for storedFrame
 			retCode = osMemoryPoolFree(memPool, storedFrame);
-
 			CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 		}
-		
-		// free the memory allocated by PHY_RECEIVER
-		retCode = osMemoryPoolFree(memPool, dataFramePointer);
 	}
 	else
 	{
@@ -248,7 +245,14 @@ osStatus_t manageDataBack(void * dataFramePointer){
 		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 		
 		storedToken->anyPtr = NULL;
+
+		// free the memory for storedFrame
+		retCode = osMemoryPoolFree(memPool, storedFrame);
+		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 	}
+
+	// free the memory allocated by PHY_RECEIVER
+	retCode = osMemoryPoolFree(memPool, dataFramePointer);
 	return retCode;
 }
 
