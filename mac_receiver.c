@@ -1,13 +1,14 @@
 #include "stm32f7xx_hal.h"
-
 #include <stdio.h>
 #include <string.h>
-
 #include "main.h"
 
+/*
+ * Send the TOKEN Frame
+*/
 osStatus_t sendTokenFrame(void * dataFramePointer)
 {
-	struct queueMsg_t queueMsg = {0};		// initialized to 0
+	struct queueMsg_t queueMsg;		
 	osStatus_t retCode;
 	
 	// set the type and token frame pointer
@@ -24,6 +25,9 @@ osStatus_t sendTokenFrame(void * dataFramePointer)
 	return retCode;
 }
 
+/*
+ * Send TO_PHY Frame
+*/
 osStatus_t send_TO_PHY_frame(void * dataFramePointer)
 {
 	struct queueMsg_t queueMsg;
@@ -43,6 +47,9 @@ osStatus_t send_TO_PHY_frame(void * dataFramePointer)
 	return retCode;
 }
 
+/*
+ * Send DATABACK Frame
+*/
 osStatus_t send_DATABACK_frame(void * dataFramePointer)
 {
 	struct queueMsg_t queueMsg;
@@ -67,6 +74,9 @@ osStatus_t send_DATABACK_frame(void * dataFramePointer)
 	return retCode;
 }
 
+/*
+ * Send DATA_IND Frame
+*/
 osStatus_t send_DATA_IND_frame(void * dataFramePointer)
 {
 	struct queueMsg_t queueMsg;
@@ -78,6 +88,7 @@ osStatus_t send_DATA_IND_frame(void * dataFramePointer)
 	
 	// memory alloc for string
 	strPtr = osMemoryPoolAlloc(memPool, osWaitForever);
+
 	if (strPtr != NULL)
 	{
 		qPtr = dataFramePointer;
@@ -91,13 +102,15 @@ osStatus_t send_DATA_IND_frame(void * dataFramePointer)
 			strPtr[i] = (char) qPtr[3+i];
 		}
 	
-		strPtr[length] = '\0';  // update it to the right position
+		strPtr[length] = '\0';  // add \0 at the end of the data
 		
+		// update frame header
 		queueMsg.type = DATA_IND;
 		queueMsg.addr = controlUnion.controlBf.srcAddr;
 		queueMsg.sapi = controlUnion.controlBf.srcSAPI;
 		queueMsg.anyPtr = strPtr;
 		
+		// Send to the right application
 		switch (controlUnion.controlBf.srcSAPI)
 		{	
 			case CHAT_SAPI:
@@ -126,6 +139,10 @@ osStatus_t send_DATA_IND_frame(void * dataFramePointer)
 		return NULL;
 	}
 }
+
+/*
+ * Main loop 
+*/
 void MacReceiver(void *argument)
 {
 	struct queueMsg_t queueMsg;
@@ -140,14 +157,12 @@ void MacReceiver(void *argument)
 	
 	for (;;)
 	{
-		
 		// read Queue
 		retCode = osMessageQueueGet(
 			queue_macR_id,
 			&queueMsg,
 			NULL,
 			osWaitForever);
-		
 		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 		
 		qPtr = queueMsg.anyPtr;
@@ -174,7 +189,7 @@ void MacReceiver(void *argument)
 					
 					// CHECKSUM
 					checksum = Checksum(qPtr);
-					checksum = checksum & 0x3F;		// put the checksum on 6 bits !!! AND 0b00111111
+					checksum = checksum & 0x3F;		// put the checksum on 6 bits -> AND 0b00111111
 					
 					// update the READ and ACK bit depending on the checksum and sapi
 					if (checksum == statusUnion.status.checksum)

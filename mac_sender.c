@@ -1,10 +1,7 @@
 #include "stm32f7xx_hal.h"
-
 #include <stdio.h>
 #include <string.h>
-
 #include "main.h"
-
 
 osMessageQueueId_t queue_storing_id;
 uint8_t * storedFrame;
@@ -34,7 +31,7 @@ osStatus_t createTokenFrame(void){
 		msgToSend[i] = 0; 
 	}
 	
-	msgToSend[MYADDRESS+1] =  0xA;		// this is the default state when a token is created
+	msgToSend[MYADDRESS+1] = (1 << CHAT_SAPI) + (1 << TIME_SAPI);		// this is the default state when a token is created
 																		// chat = 1, time = 1
 	
 	// memory allocation
@@ -43,6 +40,7 @@ osStatus_t createTokenFrame(void){
 	// set the type and data frame pointer
 	queueMsg.type = TO_PHY;
 	queueMsg.anyPtr = msg;
+
 	// update content of the data frame pointer
 	memcpy(msg, msgToSend, sizeof(msgToSend));
 	
@@ -57,7 +55,7 @@ osStatus_t createTokenFrame(void){
 }
 
 /*
- *
+ * Create the DATA Frame
 */
 osStatus_t createDataFrame(void)
 {
@@ -84,11 +82,11 @@ osStatus_t createDataFrame(void)
 	controlUnion.controlBf.destAddr = queueMsg.addr;		// dest address
 	controlUnion.controlBf.destSAPI = queueMsg.sapi;		// dest sapi
 	controlUnion.controlBf.srcSAPI = queueMsg.sapi;			// src sapi
-	controlUnion.controlBf.srcAddr = MYADDRESS;					// src address
-	controlUnion.controlBf.nothing1 = 0;								// empty bits
+	controlUnion.controlBf.srcAddr = MYADDRESS;				// src address
+	controlUnion.controlBf.nothing1 = 0;					// empty bits
 	controlUnion.controlBf.nothing2 = 0;
 	
-	// lenght in bytes
+	// length in bytes
 	length = strlen(qPtr);
 	
 	// status
@@ -142,7 +140,10 @@ osStatus_t createDataFrame(void)
 	return retCode;
 }
 
-osStatus_t send_MAC_ERROR(){
+/*
+ * Send MAC_ERROR frame
+ */
+osStatus_t send_MAC_ERROR(void){
 	struct queueMsg_t queueMsg;
 	union mac_control_union controlUnion;
 	osStatus_t retCode;
@@ -165,11 +166,12 @@ osStatus_t send_MAC_ERROR(){
 		osPriorityNormal,
 		osWaitForever);
 
-	CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
-
 	return retCode;
 }
 
+/*
+ * Manage the reception of a Databack frame
+*/
 osStatus_t manageDataBack(void * dataFramePointer){
 	struct queueMsg_t msgToSend;
 	union mac_status_union statusUnion;
@@ -181,7 +183,9 @@ osStatus_t manageDataBack(void * dataFramePointer){
 	
 	qPtr = dataFramePointer;
 	
+	// length of received data
 	length = qPtr[2];
+	// status of received data
 	statusUnion.raw = qPtr[3+length];
 	
 	// check read bit
@@ -191,6 +195,7 @@ osStatus_t manageDataBack(void * dataFramePointer){
 		if(statusUnion.status.ack == 0 && counterDataBack == 0){
 			counterDataBack++;
 			
+			// memory alloc for message to be sent
 			msg = osMemoryPoolAlloc(memPool, osWaitForever);
 			
 			// fills the message to send
@@ -207,9 +212,7 @@ osStatus_t manageDataBack(void * dataFramePointer){
 				&msgToSend,
 				osPriorityNormal,
 				osWaitForever);
-			
 			CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
-			
 		}
 		else 
 		{
@@ -221,7 +224,6 @@ osStatus_t manageDataBack(void * dataFramePointer){
 				storedToken,
 				osPriorityNormal,
 				osWaitForever);
-			
 			CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 			
 			storedToken->anyPtr = NULL;
@@ -245,10 +247,6 @@ osStatus_t manageDataBack(void * dataFramePointer){
 		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 		
 		storedToken->anyPtr = NULL;
-
-		// free the memory for storedFrame
-		retCode = osMemoryPoolFree(memPool, storedFrame);
-		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 	}
 
 	// free the memory allocated by PHY_RECEIVER
@@ -256,6 +254,9 @@ osStatus_t manageDataBack(void * dataFramePointer){
 	return retCode;
 }
 
+/*
+ * Update the token list with our states and send the TOKEN_LIST frame
+*/
 osStatus_t send_TOKEN_LIST() 
 {
 	struct queueMsg_t msgToSend;
@@ -267,11 +268,11 @@ osStatus_t send_TOKEN_LIST()
 	// update our state
 	if(gTokenInterface.connected)
 	{
-		qPtr[MYADDRESS+1] = 0xA;
+		qPtr[MYADDRESS+1] = (1 << CHAT_SAPI) + (1 << TIME_SAPI);
 	}
 	else
 	{
-		qPtr[MYADDRESS+1] = 0x4;		
+		qPtr[MYADDRESS+1] = (1 << TIME_SAPI);		
 	}
 
 	// update the station list
@@ -280,7 +281,7 @@ osStatus_t send_TOKEN_LIST()
 		gTokenInterface.station_list[i-1] = qPtr[i];
 	}
 	
-	// send TOKEN_LIST frame
+	// update TOKEN_LIST header
 	msgToSend.type = TOKEN_LIST;
 	
 	retCode = osMessageQueuePut(
@@ -289,8 +290,12 @@ osStatus_t send_TOKEN_LIST()
 			osPriorityNormal,
 			osWaitForever);
 		
-		return retCode;
+	return retCode;
 }
+
+/*
+ * Main loop
+*/
 void MacSender(void *argument)
 {
 	struct queueMsg_t queueMsg;
@@ -299,7 +304,7 @@ void MacSender(void *argument)
 	// create the private message queue
 	queue_storing_id = osMessageQueueNew(3, sizeof(struct queueMsg_t), &queue_storing_attr);
 	
-	// memory allocation for the token
+	// memory allocation for the token -> we choose to allocate the memory once and to not free it
 	storedToken = osMemoryPoolAlloc(memPool, osWaitForever);
 	
 	for (;;)
@@ -310,7 +315,6 @@ void MacSender(void *argument)
 			&queueMsg,
 			NULL,
 			osWaitForever);
-		
 		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
 		
 		switch(queueMsg.type)
@@ -318,6 +322,7 @@ void MacSender(void *argument)
 			case NEW_TOKEN:
 				retCode = createTokenFrame();
 				break;
+
 			case TOKEN:					
 				// store the token frame header
 				memcpy(storedToken, &queueMsg, sizeof(queueMsg));
@@ -340,22 +345,20 @@ void MacSender(void *argument)
 				}
 				else
 				{
-					// send fist message in the private queue
+					// send first message in the private queue
 					retCode = createDataFrame();
 				}
 				break;
+
 			case DATA_IND:
-				
 				if (osMessageQueueGetCount(queue_storing_id) < osMessageQueueGetCapacity(queue_storing_id))
 				{
-
 					// storing msg in the private queue
 					retCode = osMessageQueuePut(
 							queue_storing_id,
 							&queueMsg,
 							osPriorityNormal,
-							osWaitForever
-					); 
+							osWaitForever); 
 				}
 				break;
 				
@@ -377,6 +380,5 @@ void MacSender(void *argument)
 		}
 		
 		CheckRetCode(retCode, __LINE__, __FILE__, CONTINUE);
-		
 	}
 }
